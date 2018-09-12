@@ -4,6 +4,10 @@ import time
 from IPython.display import display, HTML
 import uuid
 import urllib
+from pstats import Stats
+from tornado.template import Template
+import os
+from .stats import table_rows, json_stats
 
 __all__ = ['load_ipython_extension']
 
@@ -36,17 +40,31 @@ def snakeviz_magic(line, cell=None):
 
     # start up a Snakeviz server
     if _check_ipynb():
-        port = str(_find_free_port())
-        sv = subprocess.Popen(['snakeviz', "-s", "-H", "0.0.0.0", "-p", port, filename])
-        time.sleep(0.5)
-        path = "/snakeviz/%s" % urllib.parse.quote_plus(filename)
-        # data = requests.get(url).content
-        display(HTML(JUPYTER_HTML_TEMPLATE.format(port=port, path=path, uuid=uuid.uuid1())))
+        if True:
+            js_str = "\n".join([open(os.path.join(os.path.dirname(__file__), 'static', file), 'r').read() for file in ['snakeviz.js', 'drawsvg.js']])
+            css_str = open(os.path.join(os.path.dirname(__file__), 'static', 'snakeviz.css'), 'r').read()
+            s = Stats(filename)
+            template_str = open(os.path.join(os.path.dirname(__file__), 'templates', 'viz_jupyter.html'), 'r').read()
+            template = Template(template_str)
+            html = template.generate(profile_name=filename, table_rows=table_rows(s), callees=json_stats(s),
+                                     snakeviz_js=js_str, snakeviz_css=css_str)
+            html = html.decode('utf-8')
+            display(HTML(html))
+        else:
+            port = str(_find_free_port())
+            sv = subprocess.Popen(['snakeviz', "-s", "-H", "0.0.0.0", "-p", port, filename])
+            time.sleep(0.5)
+            path = "/snakeviz/%s" % urllib.parse.quote_plus(filename)
+            # data = requests.get(url).content
+            display(HTML(JUPYTER_HTML_TEMPLATE.format(port=port, path=path, uuid=uuid.uuid1())))
+            # give time for the Snakeviz page to load then shut down the server
+            time.sleep(3)
+            sv.terminate()
     else:
         sv = subprocess.Popen(['snakeviz', filename])
-    # give time for the Snakeviz page to load then shut down the server
-    time.sleep(3)
-    sv.terminate()
+        # give time for the Snakeviz page to load then shut down the server
+        time.sleep(3)
+        sv.terminate()
 
 
 def load_ipython_extension(ipython):
